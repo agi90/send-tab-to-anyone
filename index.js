@@ -1,16 +1,16 @@
 "use strict";
 
+require('dotenv').config();
+
 const DOMAIN = "sferro.dev";
+const PORT = process.env.PORT || 5000;
+const DB_URL = process.env.MONGODB_URI || "mongodb://localhost:27017";
 
 const MongoClient = require("mongodb").MongoClient;
 const uuid = require("uuid/v4")
 const WebSocket = require("ws");
 const mongoose = require("mongoose");
 const fs = require("fs");
-
-const port = process.env.PORT || 5000;
-
-const DB_URL = "mongodb://localhost:27017";
 
 class UserDatabase {
     constructor(url) {
@@ -51,7 +51,7 @@ class UserDatabase {
 const userDb = new UserDatabase(DB_URL);
 
 const wss = new WebSocket.Server({
-  port,
+  port: PORT,
   perMessageDeflate: {
     zlibDeflateOptions: {
       // See zlib defaults.
