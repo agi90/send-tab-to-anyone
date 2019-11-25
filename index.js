@@ -1,11 +1,54 @@
 "use strict";
 
-const DOMAIN = 'sferro.dev';
+const DOMAIN = "sferro.dev";
 
-const uuid = require('uuid/v4')
+const MongoClient = require("mongodb").MongoClient;
+const uuid = require("uuid/v4")
 const WebSocket = require("ws");
+const mongoose = require("mongoose");
+const fs = require("fs");
+
 const port = process.env.PORT || 5000;
-const fs = require('fs');
+
+const DB_URL = "mongodb://localhost:27017";
+
+class UserDatabase {
+    constructor(url) {
+        mongoose.connect(url, {useNewUrlParser: true});
+
+        const db = mongoose.connection;
+        db.on("error", console.error.bind(console, "connection error:"));
+        db.once("open", function() {
+            console.log("connection open");
+        });
+
+        const userSchema = new mongoose.Schema({
+            displayName: String,
+            id: { type: String, index: { unique: true } },
+            friends: [String],
+            messages: [mongoose.Mixed],
+        });
+
+        userSchema.query.byId = function(id) {
+            return this.where({ id });
+        };
+
+        this.User = mongoose.model("User", userSchema);
+    }
+
+    async byId(userId) {
+        return this.User.findOne().byId(userId).exec();
+    }
+
+    async create(data) {
+        const { User } = this;
+        const { displayName, id, friends } = data;
+        const user = new User({ displayName, id, friends });
+        return user.save();
+    }
+}
+
+const userDb = new UserDatabase(DB_URL);
 
 const wss = new WebSocket.Server({
   port,
@@ -30,82 +73,58 @@ const wss = new WebSocket.Server({
   }
 });
 
-function init() {
-    let users = {};
-    try {
-        const json = fs.readFileSync('users.json');
-        users = JSON.parse(json);
-    } catch (ex) {
-        console.error(`Could not read users.json: ${ex}`);
-    }
-
-    for (const userId of Object.keys(users)) {
-        const user = users[userId];
-        user.friends = new Set(user.friends);
-    }
-
-    return users;
-}
-
-const users = init();
+const connections = {};
 
 function send(ws, data) {
     ws.send(JSON.stringify(data));
 }
 
-function sendFriends(user) {
-    const friends = [];
-    for (const friendId of user.friends) {
-        friends.push({
-            id: friendId,
-            displayName: users[friendId].displayName,
+async function sendFriends(user) {
+    const ws = connections[user.id];
+    if (!ws) {
+        // User is not connected
+        return;
+    }
+
+    const result = [];
+
+    const friends =
+        await Promise.all(user.friends.map(id => userDb.byId(id)));
+    for (const friend of friends) {
+        result.push({
+            id: friend.id,
+            displayName: friend.displayName,
         });
     }
 
-    send(user.ws, {
+    send(ws, {
         type: "friends",
-        friends,
-    });
-}
-
-function dumpState(users) {
-    const state = {};
-    for (const userId of Object.keys(users)) {
-        const { friends, messages, displayName } = users[userId];
-        state[userId] = {
-            friends: Array.from(friends), messages, displayName
-        };
-    }
-
-    fs.writeFile("users.json", JSON.stringify(state), function(err) {
-        if (err) {
-            return console.log(err);
-        }
+        friends: result,
     });
 }
 
 const API = {
-    "register": (json, state) => {
+    "register": async (json, state) => {
         const { displayName } = json;
         const userId = uuid();
 
-        users[userId] = {
-            friends: new Set(),
-            ws: state.ws,
+        const user = await userDb.create({
+            id: userId,
             messages: [],
+            friends: [],
             displayName,
-        };
+        });
+
+        connections[userId] = state.ws;
 
         state.userId = userId;
 
         send(state.ws, { type: "user", userId, displayName });
-
-        dumpState(users);
     },
 
-    "login": (json, state) => {
+    "login": async (json, state) => {
         const { userId } = json;
-        const user = users[userId];
+        const user = await userDb.byId(userId);
 
         if (!user) {
             console.error(`Unknown user ${userId}`);
@@ -113,18 +132,22 @@ const API = {
         }
 
         state.userId = userId;
-        user.ws = state.ws;
+        connections[userId] = state.ws;
+
+        const { displayName } = user;
+        send(state.ws, { type: "user", userId, displayName });
 
         let message = user.messages.shift();
         while (message) {
-            send(user.ws, message);
+            send(state.ws, message);
             message = user.messages.shift();
         }
 
-        dumpState(users);
+        user.markModified('messages');
+        await user.save();
     },
 
-    "add-friend": (json, state) => {
+    "add-friend": async (json, state) => {
         const { friendId } = json;
         const { userId } = state;
 
@@ -133,50 +156,59 @@ const API = {
             return;
         }
 
-        const friend = users[friendId];
+        const friend = await userDb.byId(friendId);
         if (!friend) {
             console.error(`Uknown user: ${friendId}`);
             return;
         }
 
-        const user = users[userId];
+        const user = await userDb.byId(userId);
 
-        user.friends.add(friendId);
-        friend.friends.add(userId);
-
-        sendFriends(user);
-
-        // If the friend is also connected, notify them
-        if (friend.ws) {
-            sendFriends(friend);
+        if (user.friends.indexOf(friendId) === -1) {
+            user.friends.push(friendId);
         }
 
-        dumpState(users);
+        if (friend.friends.indexOf(userId) === -1) {
+            friend.friends.push(userId);
+        }
+
+        await Promise.all([
+            user.save(),
+            friend.save()
+        ]);
+
+        await Promise.all([
+            sendFriends(user),
+            sendFriends(friend)
+        ]);
     },
 
-    "friends": (json, state) => {
-        const user = users[state.userId];
-        sendFriends(user);
+    "friends": async (json, state) => {
+        const user = await userDb.byId(json.userId);
+        await sendFriends(user);
     },
 
-    "send-tab": (json, state) => {
-        const friend = users[json.friendId];
+    "send-tab": async (json, state) => {
+        const { friendId, tab } = json;
+        const friend = await userDb.byId(friendId);
         if (!friend) {
-            console.error(`Uknown friend: ${json.friendId}`);
+            console.error(`Uknown friend: ${friendId}`);
             return;
         }
 
         const message = {
             type: "receive-tab",
-            tab: json.tab,
+            tab,
         };
 
+        const ws = connections[friendId];
         // If the user is connected, send immediately
-        if (friend.ws) {
-            send(friend.ws, message);
+        if (ws) {
+            send(ws, message);
         } else {
             friend.messages.push(message);
-            dumpState(users);
+            friend.markModified('messages');
+            await friend.save();
         }
     },
 };
@@ -188,12 +220,12 @@ wss.on("connection", ws => {
     };
 
     ws.on("error", data => {
-        users[state.userId].ws = null;
+        connections[state.userId] = null;
     });
 
     ws.on("close", data => {
-        if (users[state.userId]) {
-            users[state.userId].ws = null;
+        if (connections[state.userId]) {
+            connections[state.userId] = null;
         }
     });
 
