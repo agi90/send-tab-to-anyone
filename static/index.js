@@ -6,6 +6,18 @@ const CONNECTION_STATUS = {
     "error": "Connection Error",
 };
 
+const RSA_CONFIG = {
+    name: "RSA-OAEP",
+    modulusLength: 4096,
+    publicExponent: new Uint8Array([1, 0, 1]),
+    hash: "SHA-256"
+};
+
+const CRYPTO_METHODS = ["encrypt", "decrypt"];
+
+const ENCODER = new TextEncoder();
+const DECODER = new TextDecoder();
+
 function send(ws, data) {
     ws.send(JSON.stringify(data));
 }
@@ -14,8 +26,29 @@ function addFriend(ws, friendId) {
     send(ws, { type: "add-friend", friendId });
 }
 
-function sendMessage(ws, tab, friend) {
-    send(ws, { type: "send-tab", friendId: friend.id, tab });
+async function sendMessage(state, tab, friend) {
+    const encoded = ENCODER.encode(tab);
+    const encrypted = await window.crypto.subtle.encrypt(
+        { name: "RSA-OAEP" },
+        friend.publicKey,
+        encoded);
+
+    const decoded = arrayBufferToBase64(encrypted);
+    send(state.ws, { type: "send-tab", friendId: friend.id, tab: decoded });
+}
+
+async function parseFriends(friends) {
+    // Deserialize publicKey
+    for (const friend of friends) {
+        friend.publicKey = await crypto.subtle.importKey(
+            "jwk",
+            friend.publicKey,
+            { name: "RSA-OAEP", hash: "SHA-256" },
+            true,
+            ["encrypt"]);
+    }
+
+    return friends;
 }
 
 function update(state) {
@@ -33,25 +66,52 @@ function update(state) {
         button.value = friend.id;
         button.addEventListener('click', event => {
             const tab = document.getElementById("tab").value;
-            sendMessage(state.ws, tab, friend);
+            sendMessage(state, tab, friend);
         });
         friendsDiv.appendChild(button);
     }
 }
 
-function receiveTab(json, state) {
-    const span = document.createElement("span");
-    span.innerText = json.tab;
+// TODO: figure out a better way for this
+function arrayBufferToBase64(buffer) {
+    var binary = '';
+    var bytes = new Uint8Array(buffer);
+    var len = bytes.byteLength;
+    for (var i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return window.btoa(binary);
+}
 
+function base64ToArrayBuffer(base64) {
+    var binary_string = window.atob(base64);
+    var len = binary_string.length;
+    var bytes = new Uint8Array(len);
+    for (var i = 0; i < len; i++) {
+        bytes[i] = binary_string.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
+
+async function receiveTab(json, state) {
+    const span = document.createElement("span");
+    const buffer = base64ToArrayBuffer(json.tab);
+    const decrypted = await crypto.subtle.decrypt(
+        { name: "RSA-OAEP" },
+        state.privateKey,
+        buffer);
+    const decoded = DECODER.decode(decrypted);
+
+    span.innerText = decoded;
     document.getElementById("received").appendChild(span);
 }
 
-function connect(state, userId, displayName) {
+async function connect(state, userId, displayName) {
     const ws = new WebSocket("ws://127.0.0.1:5000");
     state.ws = ws;
 
     // Connection opened
-    ws.addEventListener('open', event => {
+    ws.addEventListener('open', async event => {
         state.status = "connected";
         state.userId = state.userId || userId;
         state.displayName = state.displayName || displayName;
@@ -60,7 +120,27 @@ function connect(state, userId, displayName) {
             send(ws, { type: "login", userId: state.userId });
             send(ws, { type: "friends", userId: state.userId });
         } else {
-            send(ws, { type: "register", displayName });
+            const keyPair = await window.crypto.subtle.generateKey(
+                RSA_CONFIG,
+                true,
+                CRYPTO_METHODS);
+
+            const publicKey = await crypto.subtle.exportKey(
+                "jwk", keyPair.publicKey);
+            const privateKey = await crypto.subtle.exportKey(
+                "jwk", keyPair.privateKey);
+
+            state.publicKey = keyPair.publicKey;
+            state.privateKey = keyPair.privateKey;
+
+            const exportedState = {
+                ... state,
+                privateKey,
+                publicKey
+            };
+
+            localStorage.setItem('state', JSON.stringify(exportedState));
+            send(ws, { type: "register", displayName, publicKey });
         }
 
         update(state);
@@ -76,7 +156,7 @@ function connect(state, userId, displayName) {
         update(state);
     });
 
-    ws.addEventListener('message', event => {
+    ws.addEventListener('message', async event => {
         const { data } = event;
         const json = JSON.parse(data);
         console.log('Message from server ', json);
@@ -91,7 +171,7 @@ function connect(state, userId, displayName) {
             }
 
             case "friends": {
-                state.friends = json.friends;
+                state.friends = await parseFriends(json.friends);
                 update(state);
                 break;
             }
@@ -104,12 +184,31 @@ function connect(state, userId, displayName) {
     });
 }
 
-function init() {
-    const state = {
-        userId: "",
-        status: "not-connected",
-        friends: [],
-    };
+async function init() {
+    const storage = localStorage.getItem('state');
+
+    let state;
+    if (storage) {
+        state = JSON.parse(storage);
+        state.publicKey = await crypto.subtle.importKey(
+            "jwk",
+            state.publicKey,
+            { name: "RSA-OAEP", hash: "SHA-256" },
+            true,
+            ["encrypt"]);
+        state.privateKey = await crypto.subtle.importKey(
+            "jwk",
+            state.privateKey,
+            RSA_CONFIG,
+            true,
+            ["decrypt"]);
+    } else {
+        state = {
+            userId: "",
+            status: "not-connected",
+            friends: [],
+        };
+    }
 
     document.getElementById("connect").addEventListener("click", ev => {
         const userId = document.getElementById("user-id").value;

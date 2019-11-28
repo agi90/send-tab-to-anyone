@@ -27,6 +27,14 @@ class UserDatabase {
             id: { type: String, index: { unique: true } },
             friends: [String],
             messages: [mongoose.Mixed],
+            publicKey: {
+                alg: String,
+                e: String,
+                ext: Boolean,
+                key_ops: [String],
+                kty: String,
+                n: String,
+            },
         });
 
         userSchema.query.byId = function(id) {
@@ -42,8 +50,7 @@ class UserDatabase {
 
     async create(data) {
         const { User } = this;
-        const { displayName, id, friends } = data;
-        const user = new User({ displayName, id, friends });
+        const user = new User(data);
         return user.save();
     }
 }
@@ -94,6 +101,7 @@ async function sendFriends(user) {
         result.push({
             id: friend.id,
             displayName: friend.displayName,
+            publicKey: friend.publicKey,
         });
     }
 
@@ -105,7 +113,8 @@ async function sendFriends(user) {
 
 const API = {
     "register": async (json, state) => {
-        const { displayName } = json;
+        const { displayName, publicKey } = json;
+
         const userId = uuid();
 
         const user = await userDb.create({
@@ -113,6 +122,7 @@ const API = {
             messages: [],
             friends: [],
             displayName,
+            publicKey,
         });
 
         connections[userId] = state.ws;
