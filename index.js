@@ -3,14 +3,23 @@
 require('dotenv').config();
 
 const DOMAIN = "sferro.dev";
+
 const PORT = process.env.PORT || 5000;
 const DB_URL = process.env.MONGODB_URI || "mongodb://localhost:27017";
 
+const express = require("express");
 const MongoClient = require("mongodb").MongoClient;
 const uuid = require("uuid/v4")
 const WebSocket = require("ws");
 const mongoose = require("mongoose");
 const fs = require("fs");
+
+const INDEX = '/static/index.html';
+
+const server = express()
+  .get('/index.js', (req, res) => res.sendFile('/static/index.js', { root: __dirname }))
+  .use((req, res) => res.sendFile(INDEX, { root: __dirname }))
+  .listen(PORT, () => console.log(`Listening on ${PORT}`));
 
 class UserDatabase {
     constructor(url) {
@@ -57,28 +66,7 @@ class UserDatabase {
 
 const userDb = new UserDatabase(DB_URL);
 
-const wss = new WebSocket.Server({
-  port: PORT,
-  perMessageDeflate: {
-    zlibDeflateOptions: {
-      // See zlib defaults.
-      chunkSize: 1024,
-      memLevel: 7,
-      level: 3
-    },
-    zlibInflateOptions: {
-      chunkSize: 10 * 1024
-    },
-    // Other options settable:
-    clientNoContextTakeover: true, // Defaults to negotiated value.
-    serverNoContextTakeover: true, // Defaults to negotiated value.
-    serverMaxWindowBits: 10, // Defaults to negotiated value.
-    // Below options specified as default values.
-    concurrencyLimit: 10, // Limits zlib concurrency for perf.
-    threshold: 1024 // Size (in bytes) below which messages
-    // should not be compressed.
-  }
-});
+const wss = new WebSocket.Server({ server });
 
 const connections = {};
 

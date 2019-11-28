@@ -1,5 +1,7 @@
 document.addEventListener("DOMContentLoaded", init);
 
+const HOST = location.origin.replace(/^http/, 'ws');
+
 const CONNECTION_STATUS = {
     "not-connected": "Not Connected",
     "connected": "Connected",
@@ -107,7 +109,7 @@ async function receiveTab(json, state) {
 }
 
 async function connect(state, userId, displayName) {
-    const ws = new WebSocket("ws://127.0.0.1:5000");
+    const ws = new WebSocket(HOST);
     state.ws = ws;
 
     // Connection opened
