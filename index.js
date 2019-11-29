@@ -186,6 +186,15 @@ const API = {
         await sendFriends(user);
     },
 
+    "ping": async (json, state) => {
+        const ws = connections[state.userId];
+        if (!ws) {
+            // User disconnected before we could respond
+            return;
+        }
+        send(ws, { type: "pong" });
+    },
+
     "send-tab": async (json, state) => {
         const { friendId, tab } = json;
         const friend = await userDb.byId(friendId);
