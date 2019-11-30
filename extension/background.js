@@ -76,7 +76,7 @@ async function init() {
                 break;
             }
             case "receive-tab": {
-                receiveTab(json, storage);
+                receiveTab(state, json, storage);
                 break;
             }
             case "user": {
@@ -151,13 +151,24 @@ function base64ToArrayBuffer(base64) {
     return bytes.buffer;
 }
 
-async function receiveTab(json, storage) {
+async function receiveTab(state, json, storage) {
     const buffer = base64ToArrayBuffer(json.tab);
     const decrypted = await crypto.subtle.decrypt(
         { name: "RSA-OAEP" },
         storage.state.privateKey,
         buffer);
     const decoded = DECODER.decode(decrypted);
+
+    const from = state.friends.find(
+        friend => friend.id == json.from);
+
+    browser.notifications.create({
+        "type": "basic",
+        "iconUrl": browser.runtime.getURL("icon-96.png"),
+        "title": `${from.displayName} sent a tab.`,
+        "message": decoded
+    });
+
     browser.tabs.create({
         url: decoded,
         active: false
