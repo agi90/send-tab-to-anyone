@@ -242,6 +242,7 @@ wss.on("connection", ws => {
         const api = API[json.type];
         if (!api) {
             console.error(`Unknown API: ${json.type}`);
+            console.error(`Full message: ${data}`);
             return;
         }
 
