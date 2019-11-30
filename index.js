@@ -205,6 +205,7 @@ const API = {
 
         const message = {
             type: "receive-tab",
+            from: state.userId,
             tab,
         };
 
