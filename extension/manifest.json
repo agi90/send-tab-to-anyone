@@ -1,0 +1,38 @@
+{
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "send-tab-to-anyone@sferro.dev",
+      "strict_min_version": "42.0"
+    }
+  },
+
+  "background": {
+    "page": "background.html"
+  },
+
+  "browser_action": {
+    "default_icon": "icon.svg",
+    "default_title": "Send Tab",
+    "default_popup": "send.html",
+    "browser_style": true
+  },
+
+  "description": "Send Tabs to friends and family.",
+
+  "icons": {
+    "48": "icon.svg"
+  },
+
+  "manifest_version": 2,
+
+  "name": "Send Tab to Anyone",
+
+  "permissions": [
+      "storage",
+      "tabs",
+      "clipboardWrite",
+      "<all_urls>"
+  ],
+
+  "version": "0.1"
+}

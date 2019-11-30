@@ -1,0 +1,114 @@
+<!DOCTYPE html><html>
+<head>
+    <meta charset="utf-8"/>
+    <script src="send.js" type="module"></script>
+<style>
+.user {
+  font-size: 25px;
+}
+
+.display-name {
+  position: absolute;
+  right: 0px;
+  top: 0px;
+  font-size: 30px;
+  border-right: 2px solid white;
+  border-bottom: 2px solid white;
+  padding: 6px 8px 4px 8px;
+  border-radius: 0 0 0 4px;
+  background: white;
+  color: #323232;
+}
+
+.help-text {
+  font-size: 15px;
+}
+
+.user-button {
+  font-size: 30px;
+  border: 2px solid black;
+  border-radius: 3px;
+  border-color: white;
+  color: white;
+  background: #727272;
+  padding: 5px 9px 5px 9px;
+  margin-right: 6px;
+  cursor: pointer;
+  line-height: 40px;
+}
+
+.user-button.sent {
+  background: #5C5;
+}
+
+#friend-id, #display-name {
+  padding: 4px;
+  font-size: 21px;
+
+}
+
+#friend-id {
+  width: 20em;
+}
+
+#display-name {
+  margin-bottom: 10px;
+}
+
+#user-id {
+  font-weight: bold;
+}
+
+#friends {
+  margin-top: 10px;
+}
+
+#existing-user, #new-user {
+  padding: 30px;
+  background: #323232;
+  color: white;
+  position: relative;
+}
+
+.send-tab-divider {
+  width: 100%;
+  height: 6px;
+  background: white;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.send-tab-to-text {
+  font-size: 30px;
+}</style>
+</head>
+<body>
+    <div id="new-user">
+        <input type="text" id="display-name" placeholder="Your Name">
+        <button type="button" id="register">Register</button> <br>
+        <span class="help-text">This name will be shown to your friends.</span>
+    </div>
+
+    <div id="existing-user">
+        <button type="button" id="show-friend-code">Add friend</button>
+        <div id="friend-code-wrapper">
+            <span class="display-name"></span> <br>
+            <input type="text" id="friend-id"
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+            <button type="button" id="add-friend">Add Friend</button> <br>
+            <span id="connection-status">Not connected</span> <br>
+            <div class="user">
+                <div class="friend-code">
+                    Friend code: <br>
+                    <span id="user-id"></span>
+                    <button type="button" id="copy">Copy</button>
+                </div>
+                <span class="help-text">Send this code to friends you want to send tabs to. </span>
+            </div>
+        </div>
+        <div class="send-tab-divider"></div>
+        <span class="send-tab-to-text">Send tab to</span>
+        <div id="friends"></div>
+    </div>
+</body>
+</html>
