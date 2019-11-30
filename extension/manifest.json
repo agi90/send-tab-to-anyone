@@ -2,7 +2,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "send-tab-to-anyone@sferro.dev",
-      "strict_min_version": "42.0"
+      "strict_min_version": "57.0"
     }
   },
 
@@ -30,9 +30,8 @@
   "permissions": [
       "storage",
       "tabs",
-      "clipboardWrite",
-      "<all_urls>"
+      "clipboardWrite"
   ],
 
-  "version": "0.1"
+  "version": "0.2"
 }
