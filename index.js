@@ -119,7 +119,13 @@ const API = {
 
         state.userId = userId;
 
-        send(state.ws, { type: "user", userId, displayName });
+        send(state.ws, {
+            type: "user",
+            userId,
+            displayName,
+            friends: [],
+            messages: [],
+        });
     },
 
     "login": async (json, state) => {
