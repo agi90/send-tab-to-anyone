@@ -87,6 +87,7 @@ async function init() {
                 if (messages.length > 0) {
                     receiveTabs(state, messages);
                 }
+                state.registering = false;
                 update(storage);
                 break;
             }

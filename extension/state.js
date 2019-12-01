@@ -29,6 +29,7 @@ export class StateStorage {
                 displayName: "",
                 privateKey: null,
                 publicKey: null,
+                registering: false,
             };
         }
     }

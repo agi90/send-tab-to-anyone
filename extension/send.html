@@ -80,12 +80,38 @@
 
 .send-tab-to-text {
   font-size: 30px;
+}
+
+@keyframes rotating {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+#register-icon {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  display: inline-block;
+  background-image: url("refresh.svg");
+  background-repeat: none;
+  width: 30px;
+  height: 30px;
+  animation: rotating 2s linear infinite;
+}
+
+#new-user {
+  padding-right: 50px;
 }</style>
 </head>
 <body>
     <div id="new-user">
         <input type="text" id="display-name" placeholder="Your Name">
-        <button type="button" id="register">Register</button> <br>
+        <button type="button" id="register">Register</button>
+        <div id="register-icon"></div> <br>
         <span class="help-text">This name will be shown to your friends.</span>
     </div>
 

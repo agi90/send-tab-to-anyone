@@ -35,6 +35,14 @@ function update(storage) {
     const { state } = storage;
 
     if (!state.userId) {
+        if (state.registering) {
+            document.getElementById("register").style.display = "none";
+            document.getElementById("register-icon").style.display = "inline-block";
+        } else {
+            document.getElementById("register").style.display = "inline-block";
+            document.getElementById("register-icon").style.display = "none";
+        }
+
         document.getElementById("new-user").style.display = "block";
         document.getElementById("existing-user").style.display = "none";
         return;
@@ -86,6 +94,16 @@ function arrayBufferToBase64(buffer) {
     return window.btoa(binary);
 }
 
+async function register(displayName, storage) {
+    const { state } = storage;
+    state.registering = true;
+
+    update(storage);
+
+    const page = await browser.runtime.getBackgroundPage();
+    page.register(storage, displayName);
+}
+
 async function init() {
     const page = await browser.runtime.getBackgroundPage();
     const storage = page.storage;
@@ -95,10 +113,16 @@ async function init() {
 
     update(storage);
 
+    document.getElementById("display-name").addEventListener('keyup', ev => {
+        if (ev.keyCode === 13) {
+            // Interpret "enter" as register
+            register(ev.target.value, storage);
+        }
+    });
+
     document.getElementById("register").addEventListener("click", async ev => {
         const displayName = document.getElementById("display-name").value;
-        const page = await browser.runtime.getBackgroundPage();
-        page.register(storage, displayName);
+        register(displayName, storage);
     });
 
     document.getElementById("add-friend").addEventListener("click", ev => {
