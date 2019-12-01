@@ -52,6 +52,7 @@ function update(storage) {
     if (state.friends.length == 0) {
         document.querySelector(".send-tab-to-text").style.display = "none";
         document.querySelector(".send-tab-divider").style.display = "none";
+        document.getElementById("show-friend-code").style.display = "none";
     }
 
     friendsDiv.innerHTML = "";
