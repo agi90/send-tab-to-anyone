@@ -74,13 +74,7 @@ function send(ws, data) {
     ws.send(JSON.stringify(data));
 }
 
-async function sendFriends(user) {
-    const ws = connections[user.id];
-    if (!ws) {
-        // User is not connected
-        return;
-    }
-
+async function friendList(user) {
     const result = [];
 
     const friends =
@@ -93,10 +87,18 @@ async function sendFriends(user) {
         });
     }
 
-    send(ws, {
-        type: "friends",
-        friends: result,
-    });
+    return result;
+}
+
+async function sendFriends(user) {
+    const ws = connections[user.id];
+    if (!ws) {
+        // User is not connected
+        return;
+    }
+
+    const friends = await friendList(user);
+    send(ws, { type: "friends", friends });
 }
 
 const API = {
@@ -132,17 +134,13 @@ const API = {
         state.userId = userId;
         connections[userId] = state.ws;
 
-        const { displayName } = user;
-        send(state.ws, { type: "user", userId, displayName });
+        const { displayName, messages } = user;
 
-        let message = user.messages.shift();
-        while (message) {
-            send(state.ws, message);
-            message = user.messages.shift();
-        }
-
-        user.markModified('messages');
+        user.messages = [];
         await user.save();
+
+        const friends = await friendList(user);
+        send(state.ws, { type: "user", userId, displayName, friends, messages });
     },
 
     "add-friend": async (json, state) => {
@@ -183,7 +181,9 @@ const API = {
 
     "friends": async (json, state) => {
         const user = await userDb.byId(json.userId);
-        await sendFriends(user);
+        if (user) {
+            await sendFriends(user);
+        }
     },
 
     "ping": async (json, state) => {

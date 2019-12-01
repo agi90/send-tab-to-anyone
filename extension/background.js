@@ -76,13 +76,17 @@ async function init() {
                 break;
             }
             case "receive-tab": {
-                receiveTab(state, json, storage);
+                receiveTabs(state, [json]);
                 break;
             }
             case "user": {
-                const { userId, displayName } = json;
+                const { userId, displayName, friends, messages } = json;
                 state.userId = userId;
                 state.displayName = displayName;
+                state.friends = await parseFriends(friends);
+                if (messages.length > 0) {
+                    receiveTabs(state, messages);
+                }
                 update(storage);
                 break;
             }
@@ -106,7 +110,6 @@ async function init() {
         state.status = "connected";
 
         send(ws, { type: "login", userId: state.userId });
-        send(ws, { type: "friends", userId: state.userId });
 
         update(storage);
 
@@ -151,28 +154,63 @@ function base64ToArrayBuffer(base64) {
     return bytes.buffer;
 }
 
-async function receiveTab(state, json, storage) {
-    const buffer = base64ToArrayBuffer(json.tab);
+async function decryptMessage(state, message) {
+    const buffer = base64ToArrayBuffer(message);
     const decrypted = await crypto.subtle.decrypt(
         { name: "RSA-OAEP" },
-        storage.state.privateKey,
+        state.privateKey,
         buffer);
-    const decoded = DECODER.decode(decrypted);
+    return DECODER.decode(decrypted);
+}
 
-    const from = state.friends.find(
-        friend => friend.id == json.from);
+async function receiveTabs(state, messages) {
+    const decrypted = await Promise.all(
+            messages.map(message => decryptMessage(state, message.tab)));
 
-    browser.notifications.create({
-        "type": "basic",
-        "iconUrl": browser.runtime.getURL("icon-96.png"),
-        "title": `${from.displayName} sent a tab.`,
-        "message": decoded
-    });
+    const fromMap = new Map();
+    for (const message of messages) {
+        const { from } = message;
+        if (fromMap.has(from)) {
+            fromMap.set(from, fromMap.get(from) + 1);
+        } else {
+            fromMap.set(from, 1);
+        }
+    }
 
-    browser.tabs.create({
-        url: decoded,
-        active: false
-    });
+    const message = Array.from(fromMap).reduce(
+        (acc, [friendId, tabNumber], index) => {
+            const from = state.friends.find(friend => friend.id == friendId);
+            const tab = tabNumber == 1 ? "a tab" : tabNumber + " tabs";
+            const comma = index > 0 ? ", " : "";
+            return acc + comma + `${from.displayName} sent ${tab}`;
+        }, ""
+    );
+
+    const tabs = messages.length > 1 ? `${messages.length} tabs` : "a tab";
+
+    if (messages.length == 1) {
+        // Special case for 1 message
+        browser.notifications.create({
+            "type": "basic",
+            "iconUrl": browser.runtime.getURL("icon-96.png"),
+            "title": message,
+            "message": decrypted[0],
+        });
+    } else {
+        browser.notifications.create({
+            "type": "basic",
+            "iconUrl": browser.runtime.getURL("icon-96.png"),
+            "title": `Received ${tabs}`,
+            "message": message,
+        });
+    }
+
+    for (const tab of decrypted) {
+        browser.tabs.create({
+            url: tab,
+            active: false
+        });
+    }
 }
 
 init();
