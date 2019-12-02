@@ -30,6 +30,19 @@ async function parseFriends(friends) {
 
 async function update(storage) {
     storage.save();
+    const { state } = storage;
+    const { messages } = state;
+
+    if (messages.length === 0) {
+        browser.browserAction.setBadgeText({ text: "" });
+        // popup === null enables the popup
+        browser.browserAction.setPopup({ popup: null });
+    } else {
+        browser.browserAction.setBadgeText({ text: messages.length + "" });
+        // popup === null disables the popup, so that clicking on the
+        // button triggers opening the tabs
+        browser.browserAction.setPopup({ popup: "" });
+    }
 
     const windows = await browser.extension.getViews({ type: 'popup' });
     console.log(windows);
@@ -132,6 +145,19 @@ async function init() {
         init();
     });
 
+    // Open tabs when the user clicks on the browser action icon
+    browser.browserAction.onClicked.addListener(() => {
+        for (const tab of state.messages) {
+            browser.tabs.create({
+                url: tab,
+                active: true
+            });
+        }
+
+        state.messages = [];
+        update(storage);
+    });
+
     window.sendMessage = data => {
         console.log(data);
         ws.send(JSON.stringify(data));
@@ -207,11 +233,10 @@ async function receiveTabs(state, messages) {
     }
 
     for (const tab of decrypted) {
-        browser.tabs.create({
-            url: tab,
-            active: false
-        });
+        state.messages.push(tab);
     }
+
+    update(storage);
 }
 
 init();

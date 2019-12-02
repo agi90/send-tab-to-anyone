@@ -30,6 +30,7 @@ export class StateStorage {
                 privateKey: null,
                 publicKey: null,
                 registering: false,
+                messages: [],
             };
         }
     }
