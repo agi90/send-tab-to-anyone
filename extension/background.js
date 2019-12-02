@@ -190,9 +190,32 @@ async function decryptMessage(state, message) {
     return DECODER.decode(decrypted);
 }
 
+// Sanitize tabs coming from external senders
+function filterTab(tab) {
+    try {
+        const url = new URL(tab);
+        // We only support HTTP(s) for security
+        if (url.protocol !== "https:" && url.protocol !== "http:") {
+            console.error(`Rejecting ${tab}, protocol not supported`);
+            return false;
+        }
+        return true;
+    } catch (ex) {
+        // Not a valid URL
+        console.error(`Rejecting ${tab}, invalid URL`);
+        return false;
+    }
+}
+
 async function receiveTabs(state, messages) {
-    const decrypted = await Promise.all(
-            messages.map(message => decryptMessage(state, message.tab)));
+    const decrypted = (await Promise.all(
+            messages.map(message => decryptMessage(state, message.tab))))
+        .filter(filterTab);
+
+    if (decrypted.length === 0) {
+        // No messages
+        return;
+    }
 
     const fromMap = new Map();
     for (const message of messages) {
