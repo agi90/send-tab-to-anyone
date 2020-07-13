@@ -8,7 +8,7 @@ const EXPORTED = [
 ];
 
 export class StateStorage {
-    emptyStorage() {
+    initState() {
         // Initialize
         this.state = {
             userId: "",
@@ -20,6 +20,7 @@ export class StateStorage {
             registering: false,
             messages: [],
             ws: null,
+            connection_retry: 0,
         };
     }
 
@@ -27,14 +28,14 @@ export class StateStorage {
         const storage = await browser.storage.local.get('state');
 
         if (!storage.state) {
-            this.emptyStorage();
+            this.initState();
             return;
         }
 
         const state = JSON.parse(storage.state);
 
         if (!state.publicKey || !state.privateKey) {
-            this.emptyStorage();
+            this.initState();
             return;
         }
 
@@ -53,13 +54,15 @@ export class StateStorage {
                 ["decrypt"]);
         } catch (ex) {
             console.error(ex);
-            this.emptyStorage();
+            this.initState();
             return;
         }
 
         state.messages = state.messages || [];
         state.friends = [];
         state.status = "not-connected";
+        state.connection_retry = 0;
+        state.ws = null;
 
         this.state = state;
     }

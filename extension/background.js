@@ -33,13 +33,17 @@ async function update(storage) {
     const { state } = storage;
     const { messages } = state;
 
-    if (messages.length === 0) {
+    if (state.status != "connected") {
+        browser.browserAction.setBadgeText({ text: "!" });
+        // popup === null enables the popup
+        browser.browserAction.setPopup({ popup: null });
+    } else if (messages.length === 0) {
         browser.browserAction.setBadgeText({ text: "" });
         // popup === null enables the popup
         browser.browserAction.setPopup({ popup: null });
     } else {
         browser.browserAction.setBadgeText({ text: messages.length + "" });
-        // popup === null disables the popup, so that clicking on the
+        // popup !== null disables the popup, so that clicking on the
         // button triggers opening the tabs
         browser.browserAction.setPopup({ popup: "" });
     }
@@ -71,10 +75,9 @@ async function register(ws, storage, displayName) {
     send(ws, { type: "register", displayName, publicKey });
 }
 
-async function init() {
-    const storage = new StateStorage();
-    await storage.init();
+const storage = new StateStorage();
 
+async function init() {
     const { state } = storage;
     console.log(state);
 
@@ -122,6 +125,7 @@ async function init() {
 
     ws.addEventListener('open', async event => {
         state.status = "connected";
+        state.connection_retry = 0;
 
         send(ws, { type: "login", userId: state.userId });
 
@@ -136,13 +140,18 @@ async function init() {
     });
 
     ws.addEventListener('close', event => {
-        console.log("Reconnecting...");
-        init();
+        state.connection_retry += 1;
+        state.status = "not-connected"
+        update(storage);
+
+        const delay = Math.pow(5, state.connection_retry);
+        console.log(`Reconnecting in ${delay}s...`);
+        setTimeout(init, delay * 1000);
     });
 
     ws.addEventListener('error', event => {
-        console.log("Reconnecting...");
-        init();
+        console.log("Error, closing websocket...");
+        ws.close();
     });
 
     // Open tabs when the user clicks on the browser action icon
@@ -262,4 +271,4 @@ async function receiveTabs(state, messages) {
     update(storage);
 }
 
-init();
+storage.init().then(init);
