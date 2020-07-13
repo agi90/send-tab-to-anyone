@@ -1,18 +1,13 @@
-"use strict";
-
 require("dotenv").config();
 
-const DOMAIN = "sferro.dev";
-
+const DEBUG = process.env.DEBUG || false;
 const PORT = process.env.PORT || 5000;
 const DB_URL = process.env.MONGODB_URI || "mongodb://localhost:27017";
 
 const express = require("express");
-const MongoClient = require("mongodb").MongoClient;
 const uuid = require("uuid/v4");
 const WebSocket = require("ws");
 const mongoose = require("mongoose");
-const fs = require("fs");
 
 const INDEX = "/static/index.html";
 
@@ -73,6 +68,9 @@ const wss = new WebSocket.Server({ server });
 const connections = {};
 
 function send(ws, data) {
+  if (DEBUG) {
+    console.log(`send: ${JSON.stringify(data)}`);
+  }
   ws.send(JSON.stringify(data));
 }
 
@@ -108,7 +106,7 @@ const API = {
 
     const userId = uuid();
 
-    const user = await userDb.create({
+    await userDb.create({
       id: userId,
       messages: [],
       friends: [],
@@ -207,17 +205,21 @@ const API = {
     const message = {
       type: "receive-tab",
       from: state.userId,
+      id: uuid(),
       tab,
     };
+
+    friend.messages.push(message);
+    friend.markModified("messages");
+    await friend.save();
 
     const ws = connections[friendId];
     // If the user is connected, send immediately
     if (ws) {
+      if (DEBUG) {
+        console.log(`Sending message: ${message}`);
+      }
       send(ws, message);
-    } else {
-      friend.messages.push(message);
-      friend.markModified("messages");
-      await friend.save();
     }
   },
 };
@@ -248,6 +250,9 @@ wss.on("connection", (ws) => {
       return;
     }
 
+    if (DEBUG) {
+      console.log(`got: ${data}`);
+    }
     api(json, state);
   });
 });

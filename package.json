@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "Server side for send-tab-to-anyone extension",
   "scripts": {
-    "start": "node index.js"
+    "start": "node server/index.js",
+    "pretest": "eslint --ignore-path .gitignore ."
   },
   "author": "",
   "license": "ISC",
@@ -14,5 +15,12 @@
     "mongoose": "^5.7.12",
     "uuid": "^3.3.3",
     "ws": "^7.2.0"
+  },
+  "devDependencies": {
+    "babel-eslint": "^10.1.0",
+    "eslint": "^7.5.0",
+    "eslint-config-prettier": "^6.11.0",
+    "eslint-config-webextension": "^0.6.1",
+    "eslint-plugin-import": "^2.22.0"
   }
 }

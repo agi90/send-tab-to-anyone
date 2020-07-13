@@ -34,7 +34,7 @@ async function update(storage) {
   const { state } = storage;
   const { messages } = state;
 
-  if (state.status != "connected") {
+  if (state.status !== "connected") {
     browser.browserAction.setBadgeText({ text: "!" });
     // popup === null enables the popup
     browser.browserAction.setPopup({ popup: null });
@@ -49,11 +49,14 @@ async function update(storage) {
     browser.browserAction.setPopup({ popup: "" });
   }
 
-  const windows = await browser.extension.getViews({ type: "popup" });
-  console.log(windows);
-  for (const window of windows) {
-    window.update(storage);
-  }
+  const message = {
+    type: "update",
+    state: storage.state,
+  };
+
+  browser.runtime.sendMessage(message).catch((e) => {
+    // BrowserAction popup is not open, nothing to do
+  });
 }
 
 async function register(ws, storage, displayName) {
@@ -78,11 +81,10 @@ async function register(ws, storage, displayName) {
 
 const storage = new StateStorage();
 
-async function init() {
+async function connect() {
   const { state } = storage;
-  console.log(state);
-
   const ws = new WebSocket(HOST);
+
   ws.addEventListener("message", async (event) => {
     const { data } = event;
     const json = JSON.parse(data);
@@ -114,12 +116,7 @@ async function init() {
         break;
       }
       default: {
-        console.log("Unrecognized message", json);
-        // Notify popups
-        const windows = browser.extension.getViews({ type: "popup" });
-        for (const window of windows) {
-          window.onMessage(json);
-        }
+        throw new Error(`Unknown message type: ${data}`);
       }
     }
   });
@@ -143,16 +140,61 @@ async function init() {
   ws.addEventListener("close", (event) => {
     state.connection_retry += 1;
     state.status = "not-connected";
+    window.ws = null;
     update(storage);
 
     const delay = Math.pow(5, state.connection_retry);
     console.log(`Reconnecting in ${delay}s...`);
-    setTimeout(init, delay * 1000);
+    setTimeout(connect, delay * 1000);
   });
 
   ws.addEventListener("error", (event) => {
     console.log("Error, closing websocket...");
     ws.close();
+  });
+
+  window.ws = ws;
+}
+
+async function init() {
+  await connect();
+
+  const { state } = storage;
+  console.log(state);
+
+  browser.runtime.onMessage.addListener(async (message) => {
+    switch (message.type) {
+      case "send": {
+        console.log(message);
+        window.ws.send(JSON.stringify(message.data));
+        break;
+      }
+      case "register": {
+        state.registering = true;
+        update(storage);
+        register(window.ws, storage, message.displayName);
+        break;
+      }
+      case "get-state": {
+        return Promise.resolve(JSON.parse(JSON.stringify(storage.state)));
+      }
+      case "send-tab": {
+        const { friendId, tab } = message;
+        const friend = state.friends.find((friend) => friend.id === friendId);
+        const encrypted = await encryptMessage(tab, friend);
+        send(window.ws, {
+          type: "send-tab",
+          friendId: friend.id,
+          tab: encrypted,
+        });
+        break;
+      }
+      default: {
+        throw new Error(
+          `Unknown message type: ${message.type} ${message.data}`
+        );
+      }
+    }
   });
 
   // Open tabs when the user clicks on the browser action icon
@@ -168,18 +210,11 @@ async function init() {
     update(storage);
   });
 
-  window.sendMessage = (data) => {
-    console.log(data);
-    ws.send(JSON.stringify(data));
-  };
-
   window.storage = storage;
-
-  window.register = (storage, displayName) =>
-    register(ws, storage, displayName);
 }
 
 const DECODER = new TextDecoder();
+const ENCODER = new TextEncoder();
 
 function base64ToArrayBuffer(base64) {
   var binary_string = window.atob(base64);
@@ -201,6 +236,17 @@ async function decryptMessage(state, message) {
   return DECODER.decode(decrypted);
 }
 
+async function encryptMessage(message, friend) {
+  const encoded = ENCODER.encode(message);
+  const encrypted = await window.crypto.subtle.encrypt(
+    { name: "RSA-OAEP" },
+    friend.publicKey,
+    encoded
+  );
+
+  return arrayBufferToBase64(encrypted);
+}
+
 // Sanitize tabs coming from external senders
 function filterTab(tab) {
   try {
@@ -216,6 +262,17 @@ function filterTab(tab) {
     console.error(`Rejecting ${tab}, invalid URL`);
     return false;
   }
+}
+
+// TODO: figure out a better way for this
+function arrayBufferToBase64(buffer) {
+  var binary = "";
+  var bytes = new Uint8Array(buffer);
+  var len = bytes.byteLength;
+  for (var i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
 }
 
 async function receiveTabs(state, messages) {
@@ -242,8 +299,8 @@ async function receiveTabs(state, messages) {
 
   const message = Array.from(fromMap).reduce(
     (acc, [friendId, tabNumber], index) => {
-      const from = state.friends.find((friend) => friend.id == friendId);
-      const tab = tabNumber == 1 ? "a tab" : tabNumber + " tabs";
+      const from = state.friends.find((friend) => friend.id === friendId);
+      const tab = tabNumber === 1 ? "a tab" : tabNumber + " tabs";
       const comma = index > 0 ? ", " : "";
       return acc + comma + `${from.displayName} sent ${tab}`;
     },
@@ -252,7 +309,7 @@ async function receiveTabs(state, messages) {
 
   const tabs = messages.length > 1 ? `${messages.length} tabs` : "a tab";
 
-  if (messages.length == 1) {
+  if (messages.length === 1) {
     // Special case for 1 message
     browser.notifications.create({
       type: "basic",
