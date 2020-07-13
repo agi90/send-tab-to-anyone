@@ -29,7 +29,7 @@ async function parseFriends(friends) {
 }
 
 async function update(storage) {
-    storage.save();
+    await storage.save();
     const { state } = storage;
     const { messages } = state;
 
