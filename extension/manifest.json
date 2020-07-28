@@ -20,6 +20,13 @@
 
   "description": "Send Tabs to friends and family.",
 
+  "content_scripts": [
+    {
+      "matches": ["https://send.sferro.dev/*"],
+      "js": ["send-content.js"]
+    }
+  ],
+
   "icons": {
     "48": "icon.svg"
   },
@@ -30,10 +37,10 @@
 
   "permissions": [
       "storage",
-      "tabs",
+      "activeTab",
       "notifications",
       "clipboardWrite"
   ],
 
-  "version": "0.10"
+  "version": "0.11"
 }

@@ -29,10 +29,25 @@ async function parseFriends(friends) {
   return friends;
 }
 
+const CLONABLE = [
+  "userId",
+  "status",
+  "friends",
+  "displayName",
+  "registering",
+  "messages",
+  "connection_retry",
+];
+
 async function update(storage) {
   await storage.save();
   const { state } = storage;
   const { messages } = state;
+
+  const clonable = {};
+  for (let k of CLONABLE) {
+    clonable[k] = state[k];
+  }
 
   if (state.status !== "connected") {
     browser.browserAction.setBadgeText({ text: "!" });
@@ -51,7 +66,7 @@ async function update(storage) {
 
   const message = {
     type: "update",
-    state: storage.state,
+    state: clonable,
   };
 
   browser.runtime.sendMessage(message).catch((e) => {
@@ -92,6 +107,15 @@ async function connect() {
 
     switch (json.type) {
       case "pong": {
+        break;
+      }
+      case "user-info": {
+        const { user } = json;
+        const friend = state.friends.find((friend) => friend.id === user.id);
+        user.isFriend = !!friend;
+        user.isYou = user.id === state.userId;
+        state.pendingUserInfo[user.id](user);
+        state.pendingUserInfo[user.id] = null;
         break;
       }
       case "receive-tab": {
@@ -140,7 +164,7 @@ async function connect() {
   ws.addEventListener("close", (event) => {
     state.connection_retry += 1;
     state.status = "not-connected";
-    window.ws = null;
+    state.ws = null;
     update(storage);
 
     const delay = Math.pow(5, state.connection_retry);
@@ -153,8 +177,71 @@ async function connect() {
     ws.close();
   });
 
-  window.ws = ws;
+  state.ws = ws;
 }
+
+function validateUuid(uuid) {
+  const re = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return re.test(uuid);
+}
+
+// This API is available from content scripts
+const CONTENT_API = {
+  "friend-request": async (sender, message, storage) => {
+    const { friendId } = message;
+    if (!validateUuid(friendId)) {
+      throw new Error(`Illegal friendId: ${friendId}`);
+    }
+    const { tab } = sender;
+    browser.tabs.update(tab.id, {
+      url: `/add-friend.html?t=${friendId}`,
+      loadReplace: true,
+    });
+  },
+};
+
+// This API is available from the popups and extension pages
+const PRIVILEGED_API = {
+  "user-info": async (sender, message, storage) => {
+    const { userId } = message;
+    const { state } = storage;
+    if (!validateUuid(userId)) {
+      throw new Error(`Illegal friendId: ${userId}`);
+    }
+    const userInfo = new Promise((resolve) => {
+      state.pendingUserInfo[userId] = resolve;
+    });
+    send(state.ws, { type: "user-info", userId });
+    return userInfo;
+  },
+  "add-friend": async (sender, message, storage) => {
+    const { friendId } = message;
+    if (!validateUuid(friendId)) {
+      throw new Error(`Illegal friendId: ${friendId}`);
+    }
+    send(storage.state.ws, { type: "add-friend", friendId });
+  },
+  register: async (sender, message, storage) => {
+    const { state } = storage;
+    state.registering = true;
+    update(storage);
+    register(state.ws, storage, message.displayName);
+  },
+  "get-state": async (sender, message, storage) => {
+    return Promise.resolve(JSON.parse(JSON.stringify(storage.state)));
+  },
+  "send-tab": async (sender, message, storage) => {
+    const { friendId, tab } = message;
+    const { state } = storage;
+    const friend = state.friends.find((friend) => friend.id === friendId);
+    const encrypted = await encryptMessage(tab, friend);
+    send(state.ws, {
+      type: "send-tab",
+      friendId: friend.id,
+      tab: encrypted,
+    });
+  },
+};
 
 async function init() {
   await connect();
@@ -162,43 +249,30 @@ async function init() {
   const { state } = storage;
   console.log(state);
 
-  browser.runtime.onMessage.addListener(async (message) => {
-    switch (message.type) {
-      case "send": {
-        console.log(message);
-        window.ws.send(JSON.stringify(message.data));
-        break;
+  browser.runtime.onMessage.addListener((message, sender) => {
+    const { type } = message;
+    if (!type) {
+      console.error("Missing type.");
+      return false;
+    }
+
+    if (
+      (sender.frameId === 0 || sender.frameId === undefined) &&
+      sender.url.startsWith(browser.runtime.getURL(""))
+    ) {
+      if (type in PRIVILEGED_API) {
+        return PRIVILEGED_API[type](sender, message, storage);
       }
-      case "register": {
-        state.registering = true;
-        update(storage);
-        register(window.ws, storage, message.displayName);
-        break;
-      }
-      case "get-state": {
-        return Promise.resolve(JSON.parse(JSON.stringify(storage.state)));
-      }
-      case "send-tab": {
-        const { friendId, tab } = message;
-        const friend = state.friends.find((friend) => friend.id === friendId);
-        const encrypted = await encryptMessage(tab, friend);
-        send(window.ws, {
-          type: "send-tab",
-          friendId: friend.id,
-          tab: encrypted,
-        });
-        break;
-      }
-      default: {
-        throw new Error(
-          `Unknown message type: ${message.type} ${message.data}`
-        );
+    } else {
+      if (type in CONTENT_API) {
+        return CONTENT_API[type](sender, message, storage);
       }
     }
+
+    return false;
   });
 
-  // Open tabs when the user clicks on the browser action icon
-  browser.browserAction.onClicked.addListener(() => {
+  const openTabs = () => {
     for (const tab of state.messages) {
       browser.tabs.create({
         url: tab,
@@ -208,7 +282,12 @@ async function init() {
 
     state.messages = [];
     update(storage);
-  });
+  };
+
+  // Open tabs when the user clicks on the browser action
+  // icon or on the notification
+  browser.browserAction.onClicked.addListener(openTabs);
+  browser.notifications.onClicked.addListener(openTabs);
 
   window.storage = storage;
 }
@@ -286,6 +365,9 @@ async function receiveTabs(state, messages) {
     // No messages
     return;
   }
+
+  const messageIds = messages.map((m) => m.id);
+  send(state.ws, { type: "acknowledge-message", messageIds });
 
   const fromMap = new Map();
   for (const message of messages) {

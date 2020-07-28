@@ -21,6 +21,7 @@ export class StateStorage {
       messages: [],
       ws: null,
       connection_retry: 0,
+      pendingUserInfo: {},
     };
   }
 
@@ -65,6 +66,7 @@ export class StateStorage {
     state.status = "not-connected";
     state.connection_retry = 0;
     state.ws = null;
+    state.pendingUserInfo = {};
 
     this.state = state;
   }

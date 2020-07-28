@@ -1,3 +1,5 @@
+import { SHARE_URL, SHARE_URL_DISPLAY } from "./constants.js";
+
 document.addEventListener("DOMContentLoaded", init);
 
 const CONNECTION_STATUS = {
@@ -6,46 +8,53 @@ const CONNECTION_STATUS = {
   error: "Connection Error",
 };
 
-function send(data) {
-  browser.runtime.sendMessage({
-    type: "send",
-    data,
-  });
-}
-
-function addFriend(friendId) {
-  send({ type: "add-friend", friendId });
-}
-
-async function sendMessage(tab, friend) {
+async function sendMessage(url, friend) {
   browser.runtime.sendMessage({
     type: "send-tab",
-    tab,
+    tab: url,
     friendId: friend.id,
   });
 }
 
-function update(state) {
+async function update(state) {
+  document.getElementById("new-user").style.display = "none";
+  document.getElementById("existing-user").style.display = "none";
+  document.getElementById("invalid").style.display = "none";
+  document.getElementById("register").style.display = "none";
+  document.getElementById("register-icon").style.display = "none";
+
   if (!state.userId) {
     if (state.registering) {
-      document.getElementById("register").style.display = "none";
       document.getElementById("register-icon").style.display = "inline-block";
     } else {
       document.getElementById("register").style.display = "inline-block";
-      document.getElementById("register-icon").style.display = "none";
     }
 
     document.getElementById("new-user").style.display = "block";
-    document.getElementById("existing-user").style.display = "none";
     return;
   }
 
-  document.getElementById("new-user").style.display = "none";
+  const { url } = (
+    await browser.tabs.query({
+      active: true,
+      currentWindow: true,
+    })
+  )[0];
+
+  if (!url.startsWith("http:") && !url.startsWith("https:")) {
+    document.getElementById("invalid").style.display = "block";
+    return;
+  }
+
   document.getElementById("existing-user").style.display = "block";
 
   const connectionStatus = CONNECTION_STATUS[state.status];
   document.getElementById("connection-status").innerText = connectionStatus;
-  document.getElementById("user-id").innerText = state.userId;
+
+  const userUrl = document.getElementById("user-url");
+  userUrl.innerText = SHARE_URL_DISPLAY + state.userId;
+  userUrl.href = SHARE_URL + state.userId;
+
   document.querySelector(".display-name").innerText = state.displayName;
   const friendsDiv = document.getElementById("friends");
 
@@ -63,12 +72,8 @@ function update(state) {
     button.value = friend.id;
     button.classList.add("user-button");
     button.addEventListener("click", async (event) => {
-      const tabs = await browser.tabs.query({
-        active: true,
-        currentWindow: true,
-      });
-      console.log(tabs[0].url);
-      sendMessage(tabs[0].url, friend);
+      console.log(url);
+      sendMessage(url, friend);
       button.innerText += "✔️";
       button.classList.add("sent");
       button.disabled = true;
@@ -105,16 +110,10 @@ async function init() {
     register(displayName);
   });
 
-  document.getElementById("add-friend").addEventListener("click", (ev) => {
-    const field = document.getElementById("friend-id");
-    const friendId = field.value;
-    field.value = "";
-
-    addFriend(friendId);
-  });
-
-  document.getElementById("copy").addEventListener("click", (ev) => {
-    navigator.clipboard.writeText(userId);
+  document.getElementById("user-url").addEventListener("click", (ev) => {
+    ev.preventDefault();
+    document.getElementById("copied").innerText = "(copied ✔)";
+    navigator.clipboard.writeText(SHARE_URL + userId);
   });
 
   if (state.friends.length > 0) {
@@ -136,7 +135,7 @@ browser.runtime.onMessage.addListener((message) => {
       break;
     }
     default: {
-      throw new Error(`Unknown message type ${message.type}`);
+      return false;
     }
   }
 });

@@ -141,11 +141,28 @@ const API = {
 
     const { displayName, messages } = user;
 
-    user.messages = [];
-    await user.save();
-
     const friends = await friendList(user);
     send(state.ws, { type: "user", userId, displayName, friends, messages });
+  },
+
+  "acknowledge-message": async (json, state) => {
+    const { messageIds } = json;
+    const { userId } = state;
+
+    const messageIdSet = new Set(messageIds);
+    const user = await userDb.byId(userId);
+
+    const messages = [];
+
+    for (let message of user.messages) {
+      if (!messageIdSet.has(message.id)) {
+        messages.push(message);
+      }
+    }
+
+    user.messages = messages;
+    user.markModified("messages");
+    await user.save();
   },
 
   "add-friend": async (json, state) => {
@@ -174,8 +191,24 @@ const API = {
     }
 
     await Promise.all([user.save(), friend.save()]);
-
     await Promise.all([sendFriends(user), sendFriends(friend)]);
+  },
+
+  "user-info": async (json, state) => {
+    const user = await userDb.byId(json.userId);
+    if (!user) {
+      // handle error
+      console.error(`User not found: ${json.userId}`);
+      return;
+    }
+
+    send(state.ws, {
+      type: "user-info",
+      user: {
+        displayName: user.displayName,
+        id: user.id,
+      },
+    });
   },
 
   friends: async (json, state) => {
@@ -217,7 +250,7 @@ const API = {
     // If the user is connected, send immediately
     if (ws) {
       if (DEBUG) {
-        console.log(`Sending message: ${message}`);
+        console.log(`Sending message: ${JSON.stringify(message)}`);
       }
       send(ws, message);
     }
@@ -241,11 +274,21 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("message", (data) => {
-    const json = JSON.parse(data);
+    let json;
+    try {
+      json = JSON.parse(data);
+    } catch {
+      console.error(`Could not parse ${data}`);
+      return;
+    }
+
+    if (!json || !json.type) {
+      console.error(`Message does not have a type: ${data}`);
+    }
 
     const api = API[json.type];
     if (!api) {
-      console.error(`Unknown API: ${json.type}`);
+      console.error(`Unknown API: "${json.type}"`);
       console.error(`Full message: ${data}`);
       return;
     }

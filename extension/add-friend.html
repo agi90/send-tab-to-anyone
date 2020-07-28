@@ -1,0 +1,82 @@
+<!DOCTYPE html><html>
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="add-friend.js" type="module"></script>
+<style>
+body {
+  padding: 30px 30px 24px 30px;
+  background: #323232;
+  color: white;
+  position: relative;
+  font-size: 30px;
+}
+
+a {
+  color: white;
+}
+
+#friend-request, #already-friends, #this-is-you {
+  text-align: center;
+  max-width: 720px;
+  margin: 0 auto;
+  display: none;
+}
+
+.user-name {
+  font-weight: bold;
+}
+
+.statement {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.logo {
+  width: 100px;
+  float: left;
+  margin: 15px;
+}
+
+button {
+  font-size: 30px;
+  border: 2px solid black;
+  border-radius: 3px;
+  border-color: white;
+  color: white;
+  background: #727272;
+  padding: 5px 9px 5px 9px;
+  margin-right: 6px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  line-height: 40px;
+}
+
+#add-friend-button {
+  background: #5C5;
+}
+</style>
+</head>
+<body>
+    <div id="this-is-you">
+        <span class="statement">
+            <img class="logo" src="icon.svg"></img>
+            Send this link to people you want to add as friends: <a id="user-link"></a>.
+        </span>
+    </div>
+    <div id="already-friends">
+        <span class="statement">
+            <img class="logo" src="icon.svg"></img>
+            You and <span class="user-name"></span> are already friends ✔
+        </span>
+    </div>
+    <div id="friend-request">
+        <span class="statement">
+            <img class="logo" src="icon.svg"></img>
+            Do you want to add <span class="user-name"></span> as a friend?
+        </span>
+        <button type=button id="add-friend-button">Let's do it!</button>
+        <button type=button id="cancel-friend-request">Get me outta here.</button>
+    </div>
+</body>
+</html>
